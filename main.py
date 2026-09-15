@@ -79,10 +79,10 @@ def main():
     app.add_handler(CommandHandler("gold", gold))
     if CHAT_ID:
         app.job_queue.run_repeating(auto_gold, interval=14400, first=20)
-    app.run_polling()
+    print("Telegram polling started...")
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    # Start Flask in background thread for Render
     Thread(target=run_flask, daemon=True).start()
     print("Starting Telegram bot...")
     main()
