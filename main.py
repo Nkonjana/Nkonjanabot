@@ -84,7 +84,6 @@ def main():
         app.job_queue.run_repeating(auto_gold, interval=14400, first=20)
     app.run_polling()
 
-PYTHON
 import threading
 
 def run_flask():
