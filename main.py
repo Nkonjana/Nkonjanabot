@@ -18,9 +18,10 @@ def run_flask():
 
 def get_gold_signal(only_strong=False):
     try:
-        data = yf.download("GC=F", period="5d", interval="4h", progress=False)
-        if len(data) < 50:
+        data = yf.download("GC=F", period="1mo", interval="4h", progress=False, auto_adjust=True)
+        if data.empty or len(data) < 25:
             return None
+            
         close = data['Close']
         ema_fast = close.ewm(span=9).mean()
         ema_slow = close.ewm(span=21).mean()
@@ -29,31 +30,37 @@ def get_gold_signal(only_strong=False):
         loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
+        
         price = float(close.iloc[-1])
         rsi_last = float(rsi.iloc[-1])
         ema_f = float(ema_fast.iloc[-1])
         ema_s = float(ema_slow.iloc[-1])
         ema_diff = abs(ema_f - ema_s) / price * 100
+        
         is_buy = ema_f > ema_s and rsi_last > 60 and ema_diff > 0.05
         is_sell = ema_f < ema_s and rsi_last < 40 and ema_diff > 0.05
+        
         if only_strong and not (is_buy or is_sell):
             return None
+            
         if is_buy:
             signal, sl, tp = "🟢 STRONG BUY", price - 7, price + 14
         elif is_sell:
             signal, sl, tp = "🔴 STRONG SELL", price + 7, price - 14
         else:
             return f"✨ 4H GOLD ✨\nPrice: ${price:.2f}\nRSI: {rsi_last:.1f}\nSIGNAL: ⚪ WAIT"
+            
         return f"✨ 4H GOLD QUALITY ✨\nPrice: ${price:.2f}\nRSI: {rsi_last:.1f}\nSIGNAL: {signal}\nSL: ${sl:.2f} | TP: ${tp:.2f}"
     except Exception as e:
-        return None if only_strong else f"Error: {e}"
+        print(f"Gold error: {e}")
+        return None if only_strong else f"Error fetching gold: {e} - Try again in 1 min"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bot LIVE! 4H Quality Mode. Use /gold")
 
 async def gold(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = get_gold_signal(only_strong=False)
-    await update.message.reply_text(msg or "No data yet, try again")
+    await update.message.reply_text(msg or "Fetching data... Yahoo is slow, send /gold again in 10 seconds")
 
 async def auto_gold(context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID:
