@@ -84,5 +84,17 @@ def main():
         app.job_queue.run_repeating(auto_gold, interval=14400, first=20)
     app.run_polling()
 
+pythonimport threading
+
+def run_flask():
+    app.run(host="0.0.0.0", port=10000)
+
 if __name__ == "__main__":
+    # Start Flask in background thread
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    # Start Telegram bot in main thread
+    print("Starting Telegram bot...")
     main()
