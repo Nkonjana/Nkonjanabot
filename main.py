@@ -74,9 +74,6 @@ async def auto_gold(context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=CHAT_ID, text=msg)
 
 def main():
-    # Start Flask in background
-    Thread(target=run_flask, daemon=True).start()
-    
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("gold", gold))
@@ -84,17 +81,8 @@ def main():
         app.job_queue.run_repeating(auto_gold, interval=14400, first=20)
     app.run_polling()
 
-import threading
-
-def run_flask():
-    app.run(host="0.0.0.0", port=10000)
-
 if __name__ == "__main__":
-    # Start Flask in background thread
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
-    flask_thread.start()
-    
-    # Start Telegram bot in main thread
+    # Start Flask in background thread for Render
+    Thread(target=run_flask, daemon=True).start()
     print("Starting Telegram bot...")
     main()
