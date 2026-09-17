@@ -25,16 +25,20 @@ def to_float(series):
         return float(val.iloc[0] if hasattr(val, 'iloc') else val.values[0])
 
 def get_live_price():
-    # Real TradingView spot price
+    """Real-time spot price same as TradingView"""
     try:
         r = requests.get("https://api.gold-api.com/price/XAU", timeout=10)
         return float(r.json()['price'])
     except:
-        return None
+        try:
+            d = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False)
+            return float(d['Close'].iloc[-1])
+        except:
+            return None
 
 def get_gold_signal(only_strong=False):
     try:
-        # CHANGE 1: XAUUSD=X = spot (TradingView) not GC=F = futures
+        # FIXED: XAUUSD=X = spot = 4268, NOT GC=F = futures = 4297
         data = yf.download("XAUUSD=X", period="1mo", interval="4h", progress=False, auto_adjust=True)
         if len(data) < 50:
             return None
@@ -42,10 +46,8 @@ def get_gold_signal(only_strong=False):
         live_price = get_live_price()
         price_display = live_price if live_price else to_float(data['Close'])
 
-        # --- YOUR ORIGINAL INDICATOR LOGIC ---
-        # Using Close from spot data now
+        # --- your RSI/EMA logic ---
         close = data['Close']
-        # Example: 50 EMA trend (keep your real logic if different)
         ema50 = close.ewm(span=50).mean()
         rsi = 100 - (100 / (1 + close.diff().clip(lower=0).ewm(span=14).mean() / (-close.diff().clip(upper=0).ewm(span=14).mean())))
 
@@ -53,20 +55,19 @@ def get_gold_signal(only_strong=False):
         last_ema = to_float(ema50)
         last_rsi = to_float(rsi)
 
-        # Build message with CORRECT price
         header = f"XAUUSD: ${price_display:.2f} (TradingView Spot)\n"
 
         if last_close > last_ema and last_rsi > 55:
-            return header + "🟢 BUY SIGNAL - 4H Bullish Momentum"
+            return header + "🟢 BUY SIGNAL - 4H Bullish"
         elif last_close < last_ema and last_rsi < 45:
-            return header + "🔴 SELL SIGNAL - 4H Bearish Momentum"
+            return header + "🔴 SELL SIGNAL - 4H Bearish"
         else:
             if only_strong:
                 return None
-            return header + f"⏳ WAIT - No clear setup\nEMA50: ${last_ema:.2f} | RSI: {last_rsi:.1f}"
+            return header + f"⏳ WAIT - EMA50: ${last_ema:.2f} RSI: {last_rsi:.1f}"
 
     except Exception as e:
-        print(f"Error in signal: {e}")
+        print(f"Error: {e}")
         return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def gold(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = get_gold_signal(only_strong=False)
-    await update.message.reply_text(msg or "No strong signal right now - market waiting")
+    await update.message.reply_text(msg or "No strong signal - market waiting")
 
 async def auto_gold(context: ContextTypes.DEFAULT_TYPE):
     if CHAT_ID:
