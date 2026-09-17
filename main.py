@@ -11,24 +11,24 @@ app = Flask(__name__)
 @app.route('/')
 def home(): return "LIVE"
 
+def f(x):
+    try: return float(x)
+    except: return float(x.iloc[0])
+
 def get_price():
     try:
         r = requests.get("https://api.gold-api.com/price/XAU", timeout=10)
         return float(r.json()['price'])
     except:
-        d = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False)
-        return float(d['Close'].iloc[-1])
+        d = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False, auto_adjust=True)
+        return f(d['Close'].iloc[-1])
 
 def get_signal():
     price = get_price()
     data = yf.download("XAUUSD=X", period="1mo", interval="4h", progress=False, auto_adjust=True)
-    ema = float(data['Close'].ewm(span=50).mean().iloc[-1])
-    
-    if price > ema: status = "🟢 BUY"
-    elif price < ema: status = "🔴 SELL"
-    else: status = "⏳ WAIT"
-    
-    return f"XAUUSD: ${price:.2f}\n{status}\nPrice = TradingView Spot"
+    ema = f(data['Close'].ewm(span=50).mean().iloc[-1])
+    status = "🟢 BUY" if price > ema else "🔴 SELL" if price < ema else "⏳ WAIT"
+    return f"XAUUSD: ${price:.2f} (TradingView)\n{status}"
 
 async def gold(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_signal())
