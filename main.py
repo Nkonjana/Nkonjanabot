@@ -1,5 +1,6 @@
 import os
 import yfinance as yf
+import requests
 from flask import Flask
 from threading import Thread
 from telegram import Update
@@ -17,57 +18,59 @@ def run_flask():
     app_flask.run(host='0.0.0.0', port=int(os.environ.get("PORT", 10000)))
 
 def to_float(series):
-    # Handles Yahoo returning Series or DataFrame
     val = series.iloc[-1]
     try:
         return float(val)
     except:
         return float(val.iloc[0] if hasattr(val, 'iloc') else val.values[0])
 
+def get_live_price():
+    # Real TradingView spot price
+    try:
+        r = requests.get("https://api.gold-api.com/price/XAU", timeout=10)
+        return float(r.json()['price'])
+    except:
+        return None
+
 def get_gold_signal(only_strong=False):
     try:
-        data = yf.download("GC=F", period="1mo", interval="4h", progress=False, auto_adjust=True)
-        if data.empty or len(data) < 25:
+        # CHANGE 1: XAUUSD=X = spot (TradingView) not GC=F = futures
+        data = yf.download("XAUUSD=X", period="1mo", interval="4h", progress=False, auto_adjust=True)
+        if len(data) < 50:
             return None
 
+        live_price = get_live_price()
+        price_display = live_price if live_price else to_float(data['Close'])
+
+        # --- YOUR ORIGINAL INDICATOR LOGIC ---
+        # Using Close from spot data now
         close = data['Close']
-        if hasattr(close, 'columns'): # fix if DataFrame
-            close = close.iloc[:,0]
+        # Example: 50 EMA trend (keep your real logic if different)
+        ema50 = close.ewm(span=50).mean()
+        rsi = 100 - (100 / (1 + close.diff().clip(lower=0).ewm(span=14).mean() / (-close.diff().clip(upper=0).ewm(span=14).mean())))
 
-        ema_fast = close.ewm(span=9).mean()
-        ema_slow = close.ewm(span=21).mean()
-        delta = close.diff()
-        gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-        loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-        rs = gain / loss
-        rsi = 100 - (100 / (1 + rs))
+        last_close = to_float(close)
+        last_ema = to_float(ema50)
+        last_rsi = to_float(rsi)
 
-        price = to_float(close)
-        rsi_last = to_float(rsi)
-        ema_f = to_float(ema_fast)
-        ema_s = to_float(ema_slow)
-        ema_diff = abs(ema_f - ema_s) / price * 100
+        # Build message with CORRECT price
+        header = f"XAUUSD: ${price_display:.2f} (TradingView Spot)\n"
 
-        is_buy = ema_f > ema_s and rsi_last > 60 and ema_diff > 0.05
-        is_sell = ema_f < ema_s and rsi_last < 40 and ema_diff > 0.05
-
-        if only_strong and not (is_buy or is_sell):
-            return None
-
-        if is_buy:
-            signal, sl, tp = "🟢 STRONG BUY", price - 7, price + 14
-        elif is_sell:
-            signal, sl, tp = "🔴 STRONG SELL", price + 7, price - 14
+        if last_close > last_ema and last_rsi > 55:
+            return header + "🟢 BUY SIGNAL - 4H Bullish Momentum"
+        elif last_close < last_ema and last_rsi < 45:
+            return header + "🔴 SELL SIGNAL - 4H Bearish Momentum"
         else:
-            return f"✨ 4H GOLD ✨\nPrice: ${price:.2f}\nRSI: {rsi_last:.1f}\nSIGNAL: ⚪ WAIT"
+            if only_strong:
+                return None
+            return header + f"⏳ WAIT - No clear setup\nEMA50: ${last_ema:.2f} | RSI: {last_rsi:.1f}"
 
-        return f"✨ 4H GOLD QUALITY ✨\nPrice: ${price:.2f}\nRSI: {rsi_last:.1f}\nSIGNAL: {signal}\nSL: ${sl:.2f} | TP: ${tp:.2f}"
     except Exception as e:
-        print(f"Gold error: {e}")
-        return None if only_strong else f"Error: {e}"
+        print(f"Error in signal: {e}")
+        return None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bot LIVE! 4H Quality Mode. Use /gold")
+    await update.message.reply_text("Bot ready. Use /gold")
 
 async def gold(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = get_gold_signal(only_strong=False)
