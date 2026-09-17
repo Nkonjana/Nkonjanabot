@@ -11,9 +11,16 @@ app = Flask(__name__)
 @app.route('/')
 def home(): return "LIVE"
 
-def f(x):
-    try: return float(x)
-    except: return float(x.iloc[0])
+def to_float(x):
+    try:
+        if hasattr(x, 'iloc'):
+            v = x.iloc[-1] if len(x.shape)==1 else x.iloc[-1].iloc[0]
+            if hasattr(v, 'iloc'): v = v.iloc[0]
+            return float(v)
+        return float(x)
+    except:
+        try: return float(x.values[-1])
+        except: return float(str(x).split()[-1])
 
 def get_price():
     try:
@@ -21,13 +28,17 @@ def get_price():
         return float(r.json()['price'])
     except:
         d = yf.download("XAUUSD=X", period="1d", interval="1m", progress=False, auto_adjust=True)
-        return f(d['Close'].iloc[-1])
+        return to_float(d['Close'])
 
 def get_signal():
     price = get_price()
-    data = yf.download("XAUUSD=X", period="1mo", interval="4h", progress=False, auto_adjust=True)
-    ema = f(data['Close'].ewm(span=50).mean().iloc[-1])
-    status = "🟢 BUY" if price > ema else "🔴 SELL" if price < ema else "⏳ WAIT"
+    try:
+        data = yf.download("XAUUSD=X", period="1mo", interval="4h", progress=False, auto_adjust=True)
+        ema_series = data['Close'].ewm(span=50).mean()
+        ema = to_float(ema_series)
+        status = "🟢 BUY" if price > ema else "🔴 SELL" if price < ema else "⏳ WAIT"
+    except Exception as e:
+        status = "⏳ WAIT"
     return f"XAUUSD: ${price:.2f} (TradingView)\n{status}"
 
 async def gold(update: Update, context: ContextTypes.DEFAULT_TYPE):
